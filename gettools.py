@@ -72,36 +72,31 @@ def convertpath(path):
     return path.replace(os.path.sep, '/')
 
 
-def main():
-    # Check minimal Python version is 2.7
-    if sys.version_info < (2, 7):
-        sys.stderr.write('You need Python 2.7 or later\n')
-        sys.exit(1)
+def getfusionreleaselist(urlbase):
+    # Get the list of Fusion releases
+    response = urlopen(urlbase)
+    html = response.read()
+    parser = CDSParser()
+    parser.feed(str(html))
+    # Reverse the list as the last item in the ul/li tags is the latest release
+    releaselist = list(reversed(parser.HTMLDATA))
+    parser.clean()
+    return releaselist
 
-    # Setup url and file paths
-    url = 'http://softwareupdate.vmware.com/cds/vmw-desktop/fusion/'
-    dest = os.path.dirname(os.path.abspath(__file__))
 
+def gettoolsfrompackage(urlrelease, dest):
     # Re-create the tools folder
     shutil.rmtree(dest + '/tools', True)
     os.mkdir(dest + '/tools')
 
-    # Get the list of Fusion releases
-    # And get the last item in the ul/li tags
-    response = urlopen(url)
+    # Open the release page
+    # And build file URL
+    response = urlopen(urlrelease)
     html = response.read()
     parser = CDSParser()
     parser.feed(str(html))
-    url = url + parser.HTMLDATA[-1] + '/'
-    parser.clean()
-
-    # Open the latest release page
-    # And build file URL
-    response = urlopen(url)
-    html = response.read()
-    parser.feed(str(html))
-    urlpost15 = url + parser.HTMLDATA[-1] + '/packages/com.vmware.fusion.tools.darwin.zip.tar'
-    urlpre15 = url + parser.HTMLDATA[-1] + '/packages/com.vmware.fusion.tools.darwinPre15.zip.tar'
+    urlpost15 = urlrelease + parser.HTMLDATA[-1] + '/packages/com.vmware.fusion.tools.darwin.zip.tar'
+    urlpre15 = urlrelease + parser.HTMLDATA[-1] + '/packages/com.vmware.fusion.tools.darwinPre15.zip.tar'
     parser.clean()
 
     # Download the darwin.iso tgz file
@@ -153,6 +148,35 @@ def main():
     shutil.rmtree(convertpath(dest + '/tools/payload'), True)
     os.remove(convertpath(dest + '/tools/com.vmware.fusion.tools.darwinPre15.zip.tar'))
     os.remove(convertpath(dest + '/tools/com.vmware.fusion.tools.darwinPre15.zip'))
+
+
+def main():
+    # Check minimal Python version is 2.7
+    if sys.version_info < (2, 7):
+        sys.stderr.write('You need Python 2.7 or later\n')
+        sys.exit(1)
+
+    # Setup url and file paths
+    urlbase = 'http://softwareupdate.vmware.com/cds/vmw-desktop/fusion/'
+    dest = os.path.dirname(os.path.abspath(__file__))
+
+    # Get the list of Fusion releases
+    releaselist = getfusionreleaselist(urlbase)
+
+    # Attempt to obtain tools from the latest release first
+    for release in releaselist:
+        urlrelease = urlbase + release + '/'
+        try:
+            gettoolsfrompackage(urlrelease, dest)
+            print('Darwin tools obtained from package release ' + release)
+            if releaselist.index(release) != 0:
+                print('This is NOT the latest!! Latest release is ' + releaselist[0])
+            # Done
+            break
+        except tarfile.ReadError:
+            print('Could not obtain tools package for release ' + release)
+        except:
+            print('Error obtaining tools package for release ' + release)
 
 
 if __name__ == '__main__':
